@@ -1,0 +1,364 @@
+﻿@page "/"
+@using GestionaleRK.Models
+@using GestionaleRK.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@inject IndexedDbService DbService
+@inject ExportService ExportService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Clienti - GestionaleRK</PageTitle>
+
+<div class="app-container">
+    <!-- Compact Action Bar -->
+    <div class="action-bar">
+        <div class="action-bar-center">
+            @if (allClients.Count > 0)
+            {
+                <div class="search-bar-compact">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" class="search-input-compact" 
+                           placeholder="Cerca clienti..." 
+                           @bind="searchTerm" 
+                           @oninput="OnSearchInput" />
+                    @if (!string.IsNullOrEmpty(searchTerm))
+                    {
+                        <button class="search-clear-compact" type="button" @onclick="ClearSearch">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="app-title">
+                    <h1 class="page-title">GestionaleRK</h1>
+                    <p class="page-subtitle">Gestione Clienti</p>
+                </div>
+            }
+        </div>
+        
+        <div class="action-bar-bottom">
+            @if (allClients.Count > 0)
+            {
+                <div class="dropdown action-button-export">
+                    <button class="btn btn-outline-secondary dropdown-toggle w-100" type="button" 
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-download"></i> Esporta
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <button class="dropdown-item" @onclick="ExportToCsv">
+                                <i class="bi bi-file-earmark-spreadsheet"></i> Esporta CSV
+                            </button>
+                        </li>
+                        <li>
+                            <button class="dropdown-item" @onclick="ExportBackup">
+                                <i class="bi bi-file-earmark-zip"></i> Backup Completo
+                            </button>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <label class="dropdown-item cursor-pointer" for="importFile">
+                                <i class="bi bi-upload"></i> Ripristina Backup
+                            </label>
+                            <InputFile id="importFile" accept=".json" style="display: none;" 
+                                       @ref="fileInput" OnChange="HandleFileSelected" />
+                        </li>
+                    </ul>
+                </div>
+            }
+            <button class="btn btn-primary action-button-new w-100" @onclick="ShowAddClientModal">
+                <i class="bi bi-plus-lg"></i> Nuovo Cliente
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content-area">
+        @if (filteredClients.Count != allClients.Count && !string.IsNullOrEmpty(searchTerm))
+        {
+            <div class="search-results-info">
+                <i class="bi bi-funnel"></i>
+                <span>Trovati <strong>@filteredClients.Count</strong> su @allClients.Count</span>
+            </div>
+        }
+
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Caricamento...</span>
+                </div>
+                <p class="mt-3 text-muted">Caricamento clienti...</p>
+            </div>
+        }
+        else if (allClients.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <i class="bi bi-people"></i>
+                </div>
+                <h3>Nessun cliente ancora</h3>
+                <p>Inizia aggiungendo il tuo primo cliente</p>
+                <button class="btn btn-primary btn-lg" @onclick="ShowAddClientModal">
+                    <i class="bi bi-plus-circle"></i> Aggiungi primo cliente
+                </button>
+            </div>
+        }
+        else if (filteredClients.Count == 0)
+        {
+            <div class="no-results-state">
+                <div class="no-results-icon">
+                    <i class="bi bi-search"></i>
+                </div>
+                <h4>Nessun risultato</h4>
+                <p>Nessun cliente corrisponde a "<strong>@searchTerm</strong>"</p>
+                <button class="btn btn-outline-primary" @onclick="ClearSearch">
+                    <i class="bi bi-arrow-clockwise"></i> Mostra tutti
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="clients-grid">
+                @foreach (var client in filteredClients)
+                {
+                    <div class="client-card" @onclick="() => ShowEditClientModal(client)">
+                        <div class="client-name">@client.NomeCompleto</div>
+                        
+                        <div class="client-details">
+                            @if (!string.IsNullOrEmpty(client.Telefono))
+                            {
+                                <div class="client-info">
+                                    <i class="bi bi-telephone-fill"></i>
+                                    <span>@client.Telefono</span>
+                                    <button class="call-button" @onclick="() => CallClient(client.Telefono)" @onclick:stopPropagation="true" title="Chiama @client.Telefono">
+                                        <i class="bi bi-telephone"></i>
+                                    </button>
+                                </div>
+                            }
+                            
+                            @if (!string.IsNullOrEmpty(client.Email))
+                            {
+                                <div class="client-info">
+                                    <i class="bi bi-envelope-fill"></i>
+                                    <span>@client.Email</span>
+                                </div>
+                            }
+                        </div>
+                        
+                        <div class="client-footer">
+                            @if (client.Note.Any())
+                            {
+                                <div class="client-notes-badge">
+                                    <i class="bi bi-sticky-fill"></i>
+                                    <span>@client.Note.Count</span>
+                                </div>
+                            }
+                            
+                            <div class="client-date">
+                                <small>@client.DataUltimaModifica.ToString("dd/MM")</small>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (showClientModal)
+{
+    <ClientModal Client="selectedClient" 
+                 IsNew="isNewClient" 
+                 OnSave="HandleClientSave" 
+                 OnCancel="HideClientModal" 
+                 OnDelete="HandleClientDelete" />
+}
+
+@code {
+    private List<Client> allClients = new();
+    private List<Client> filteredClients = new();
+    private string searchTerm = string.Empty;
+    private bool isLoading = true;
+    private bool showClientModal = false;
+    private Client? selectedClient = null;
+    private bool isNewClient = false;
+    private InputFile fileInput;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await DbService.InitializeAsync();
+        await LoadClients();
+    }
+
+    private async Task LoadClients()
+    {
+        isLoading = true;
+        allClients = await DbService.GetAllClientsAsync();
+        FilterClients();
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private void FilterClients()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            filteredClients = allClients;
+        }
+        else
+        {
+            var searchLower = searchTerm.ToLower();
+            filteredClients = allClients.Where(c => 
+                c.Nome.ToLower().Contains(searchLower) || 
+                c.Cognome.ToLower().Contains(searchLower) ||
+                c.NomeCompleto.ToLower().Contains(searchLower)
+            ).ToList();
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        FilterClients();
+        StateHasChanged();
+    }
+
+    private void ClearSearch()
+    {
+        searchTerm = string.Empty;
+        FilterClients();
+        StateHasChanged();
+    }
+
+    private void ShowAddClientModal()
+    {
+        selectedClient = new Client();
+        isNewClient = true;
+        showClientModal = true;
+    }
+
+    private void ShowEditClientModal(Client client)
+    {
+        selectedClient = client;
+        isNewClient = false;
+        showClientModal = true;
+    }
+
+    private void HideClientModal()
+    {
+        showClientModal = false;
+        selectedClient = null;
+    }
+
+    private async Task HandleClientSave(Client client)
+    {
+        await DbService.SaveClientAsync(client);
+        await LoadClients();
+        HideClientModal();
+    }
+
+    private async Task HandleClientDelete(string clientId)
+    {
+        await DbService.DeleteClientAsync(clientId);
+        await LoadClients();
+        HideClientModal();
+    }
+    
+    private async Task ExportToCsv()
+    {
+        try
+        {
+            await ExportService.ExportToCsvAsync(allClients);
+        }
+        catch (Exception ex)
+        {
+            // In una versione più avanzata potresti mostrare un toast o alert
+            Console.WriteLine($"Errore durante l'export CSV: {ex.Message}");
+        }
+    }
+    
+    private async Task ExportBackup()
+    {
+        try
+        {
+            await ExportService.ExportBackupAsync(allClients);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Errore durante il backup: {ex.Message}");
+        }
+    }
+    
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file != null && file.Name.EndsWith(".json"))
+            {
+                using var reader = new StreamReader(file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024)); // 10MB max
+                var content = await reader.ReadToEndAsync();
+                
+                var importedClients = await ExportService.ImportBackupAsync(content);
+                if (importedClients != null)
+                {
+                    // Chiedi conferma prima di sovrascrivere
+                    var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+                        $"Sei sicuro di voler ripristinare il backup? Questo sostituirà tutti i {allClients.Count} clienti attuali con {importedClients.Count} clienti dal backup.");
+                    
+                    if (confirmed)
+                    {
+                        // Elimina tutti i clienti esistenti
+                        foreach (var client in allClients)
+                        {
+                            await DbService.DeleteClientAsync(client.Id);
+                        }
+                        
+                        // Importa i nuovi clienti
+                        foreach (var client in importedClients)
+                        {
+                            await DbService.SaveClientAsync(client);
+                        }
+                        
+                        await LoadClients();
+                        await JSRuntime.InvokeVoidAsync("alert", $"Backup ripristinato con successo! Importati {importedClients.Count} clienti.");
+                    }
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Errore: File di backup non valido.");
+                }
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Errore: Seleziona un file .json valido.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Errore durante l'importazione: {ex.Message}");
+            Console.WriteLine($"Errore durante l'importazione: {ex.Message}");
+        }
+    }
+    
+    // Metodo per gestire le chiamate
+    private async Task CallClient(string phoneNumber)
+    {
+        try
+        {
+            // Su dispositivi mobili, questo aprirà l'app telefono
+            var telUri = $"tel:{phoneNumber.Replace(" ", "").Replace("-", "")}";
+            await JSRuntime.InvokeVoidAsync("window.open", telUri);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Errore durante la chiamata: {ex.Message}");
+            // Se non riesce ad aprire l'app telefono, copia il numero negli appunti
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", phoneNumber);
+            await JSRuntime.InvokeVoidAsync("alert", $"Numero copiato negli appunti: {phoneNumber}");
+        }
+    }
+}

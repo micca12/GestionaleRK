@@ -1,0 +1,214 @@
+@using GestionaleRK.Models
+
+<div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    @if (IsNew)
+                    {
+                        <text>Nuovo Cliente</text>
+                    }
+                    else
+                    {
+                        <text>Modifica Cliente</text>
+                    }
+                </h5>
+                <button type="button" class="btn-close" @onclick="() => OnCancel.InvokeAsync()"></button>
+            </div>
+            <div class="modal-body">
+                <form @onsubmit="HandleSubmit" @onsubmit:preventDefault="true">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="nome" class="form-label">Nome *</label>
+                            <input type="text" class="form-control" id="nome" @bind="Client.Nome" required />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="cognome" class="form-label">Cognome *</label>
+                            <input type="text" class="form-control" id="cognome" @bind="Client.Cognome" required />
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="telefono" class="form-label">Telefono</label>
+                            <input type="tel" class="form-control" id="telefono" @bind="Client.Telefono" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" @bind="Client.Email" />
+                        </div>
+                    </div>
+
+                    @if (!IsNew && Client.Note.Any())
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Note Cliente</label>
+                            <div class="border rounded p-2" style="max-height: 300px; overflow-y: auto;">
+                                @foreach (var nota in Client.Note.OrderByDescending(n => n.DataCreazione))
+                                {
+                                    <div class="mb-2 p-2 bg-light rounded position-relative">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <small class="text-muted">@nota.DataCreazione.ToString("dd/MM/yyyy HH:mm")</small>
+                                            <div>
+                                                @if (editingNoteId == nota.Id)
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-success me-1" 
+                                                            @onclick="() => SaveNoteEdit(nota)" title="Salva modifiche">
+                                                        <i class="bi bi-check"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-secondary" 
+                                                            @onclick="CancelNoteEdit" title="Annulla modifiche">
+                                                        <i class="bi bi-x"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-outline-primary me-1" 
+                                                            @onclick="() => StartEditNote(nota)" title="Modifica nota">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                            @onclick="() => DeleteNote(nota.Id)" title="Elimina nota">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                        @if (editingNoteId == nota.Id)
+                                        {
+                                            <textarea class="form-control" rows="3" @bind="editingNoteText"></textarea>
+                                        }
+                                        else
+                                        {
+                                            <div>@nota.Testo</div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label for="nuovaNota" class="form-label">
+                            @if (IsNew)
+                            {
+                                <text>Note</text>
+                            }
+                            else
+                            {
+                                <text>Aggiungi Nuova Nota</text>
+                            }
+                        </label>
+                        <textarea class="form-control" id="nuovaNota" rows="3" @bind="nuovaNota" 
+                                  placeholder="Scrivi qui eventuali note..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                @if (!IsNew)
+                {
+                    <button type="button" class="btn btn-danger me-auto" @onclick="ConfirmDelete">
+                        <i class="bi bi-trash"></i> Elimina
+                    </button>
+                }
+                <button type="button" class="btn btn-secondary" @onclick="() => OnCancel.InvokeAsync()">Annulla</button>
+                <button type="button" class="btn btn-primary" @onclick="HandleSubmit" disabled="@(!IsFormValid)">
+                    <i class="bi bi-check-circle"></i> Salva
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (showDeleteConfirm)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.7); z-index: 1060;">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Conferma Eliminazione</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Sei sicuro di voler eliminare il cliente <strong>@Client.NomeCompleto</strong>?</p>
+                    <p class="text-muted">Questa operazione non può essere annullata.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => showDeleteConfirm = false">Annulla</button>
+                    <button type="button" class="btn btn-danger" @onclick="HandleDelete">Elimina</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Client Client { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; }
+    [Parameter] public EventCallback<Client> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback<string> OnDelete { get; set; }
+
+    private string nuovaNota = string.Empty;
+    private bool showDeleteConfirm = false;
+    private string? editingNoteId = null;
+    private string editingNoteText = string.Empty;
+    
+    private bool IsFormValid => !string.IsNullOrWhiteSpace(Client.Nome) && !string.IsNullOrWhiteSpace(Client.Cognome);
+
+    private async Task HandleSubmit()
+    {
+        if (!IsFormValid) return;
+
+        if (!string.IsNullOrWhiteSpace(nuovaNota))
+        {
+            Client.Note.Add(new ClientNote
+            {
+                Testo = nuovaNota.Trim(),
+                DataCreazione = DateTime.Now
+            });
+        }
+
+        await OnSave.InvokeAsync(Client);
+    }
+
+    private void StartEditNote(ClientNote nota)
+    {
+        editingNoteId = nota.Id;
+        editingNoteText = nota.Testo;
+    }
+
+    private void SaveNoteEdit(ClientNote nota)
+    {
+        if (!string.IsNullOrWhiteSpace(editingNoteText))
+        {
+            nota.Testo = editingNoteText.Trim();
+        }
+        CancelNoteEdit();
+    }
+
+    private void CancelNoteEdit()
+    {
+        editingNoteId = null;
+        editingNoteText = string.Empty;
+    }
+
+    private void DeleteNote(string noteId)
+    {
+        var noteToRemove = Client.Note.FirstOrDefault(n => n.Id == noteId);
+        if (noteToRemove != null)
+        {
+            Client.Note.Remove(noteToRemove);
+        }
+    }
+
+    private void ConfirmDelete()
+    {
+        showDeleteConfirm = true;
+    }
+
+    private async Task HandleDelete()
+    {
+        await OnDelete.InvokeAsync(Client.Id);
+    }
+}

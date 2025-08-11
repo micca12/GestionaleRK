@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  deploy-to-github-pages:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore
+
+    - name: Publish
+      run: dotnet publish GestionaleRK/GestionaleRK.csproj -c Release -o release --nologo
+
+    # Change base-tag in index.html from '/' to 'GestionaleRK' to match GitHub Pages repository name
+    - name: Change base-tag in index.html
+      run: sed -i 's/<base href="\/" \/>/<base href="\/GestionaleRK\/" \/>/g' release/wwwroot/index.html
+
+    # Copy index.html to 404.html to serve the same file when a file is not found
+    - name: Copy index.html to 404.html
+      run: cp release/wwwroot/index.html release/wwwroot/404.html
+
+    # Add .nojekyll file to tell GitHub Pages to not treat this as a Jekyll project
+    - name: Add .nojekyll file
+      run: touch release/wwwroot/.nojekyll
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: release/wwwroot
